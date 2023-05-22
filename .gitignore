@@ -1,3 +1,6 @@
+# General
+.vscode/
+
 # Prerequisites
 *.d
 
@@ -30,3 +33,7 @@
 *.exe
 *.out
 *.app
+
+# Directories
+fasta/
+result/
