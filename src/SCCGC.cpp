@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
+#include <vector>
 using namespace std;
 
 class SCCGC {
@@ -15,16 +16,21 @@ class SCCGC {
   ) : referenceGenomePath(referenceGenomePath), inputFilePath(inputFilePath), outputDirPath(outputDirPath) {};
   ~SCCGC(){};
   void run();
+  void buildGlobalHashTable(string read, int kmer_length);
+
  private:
   std::string referenceGenomePath;
   std::string inputFilePath;
   std::string outputDirPath;
   std::string referenceSeq;
   int kmer_size;
+  static const int maxchar = 67108864;
+  static const int maxseq = 268435456; 
+  std::vector<int> kmer_location;
+  std::vector<int> next_kmer;
 };
 
 int main(int argc, char **argv) {
-
   // check number of arguments
   if(argc < 4) {
     std::cout << "Usage: " << argv[0] << " <reference genome file> <input file> <output_directory>" << std::endl;
@@ -52,6 +58,7 @@ int main(int argc, char **argv) {
   SCCGC sccgc(argv[1], argv[2], argv[3]);
 
   sccgc.run();
+  return 0;
 }
 
 std::string parseReferenceGenome(std::string referenceGenomePath) {
@@ -121,5 +128,39 @@ void SCCGC::run() {
 
   // parse reference genome file
   referenceSeq = parseReferenceGenome(referenceGenomePath);
-  cout << referenceSeq << endl;
+
+  buildGlobalHashTable(referenceSeq, 21);
+}
+
+void SCCGC::buildGlobalHashTable(string reference, int kmer_length) {
+  
+  int iters = reference.length() - kmer_length + 1;
+
+  // allocate hash table
+  kmer_location = std::vector<int>(maxseq);
+  next_kmer = std::vector<int>(iters);
+  
+  for (int i = 0; i < maxseq; i++) {
+    kmer_location[i] = -1;
+  }
+
+  for (int i = 0; i < iters; i++) {
+    cout << i << endl;
+    string kmer = reference.substr(i, kmer_length);
+    hash<string> hasher;
+    long key = labs(hasher(kmer));
+
+    if (key == -2147483648) {
+      key = 0;
+    }
+
+    while (key > maxseq - 1) {
+      key = key / 2;
+    }
+
+    cout << key << endl;
+
+    next_kmer[i] = kmer_location[static_cast<int>(key)];
+    kmer_location[static_cast<int>(key)] = i;
+  }
 }
