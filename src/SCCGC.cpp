@@ -16,7 +16,9 @@ class SCCGC {
   ) : referenceGenomePath(referenceGenomePath), inputFilePath(inputFilePath), outputDirPath(outputDirPath) {};
   ~SCCGC(){};
   void run();
-  void buildGlobalHashTable(string read, int kmer_length);
+  void buildGlobalHashTable(const string reference, int kmer_length);
+  void buildLocalHashTable(const string reference, int kmer_length);
+  std::vector<std::pair<int, int>> getLowercasePositions(const string input);
 
  private:
   std::string referenceGenomePath;
@@ -25,7 +27,7 @@ class SCCGC {
   std::string referenceSeq;
   int kmer_size;
   static const int maxchar = 67108864;
-  static const int maxseq = 268435456; 
+  static const int ght_maxlen = 268435456; 
   std::vector<int> kmer_location;
   std::vector<int> next_kmer;
 };
@@ -77,14 +79,14 @@ std::string parseReferenceGenome(std::string referenceGenomePath) {
     for(int i = 0; i < line.length(); i++) {
       char c = toupper(line[i]);
       if (c != 'N') {
-        referenceGenome += toupper(line[i]);
+        referenceGenome += c;
       }
     }
   }
   return referenceGenome;
 }
 
-std::string parseTargetGenome(std::string targetGenomePath) {
+std::string readTargetGenome(std::string targetGenomePath) {
   ifstream targetGenomeFile(targetGenomePath);
   // check file opened successfully
   if(!targetGenomeFile.is_open()) {
@@ -98,10 +100,7 @@ std::string parseTargetGenome(std::string targetGenomePath) {
 
   while(getline(targetGenomeFile, line)) {
     for(int i = 0; i < line.length(); i++) {
-      char c = toupper(line[i]);
-      if (c != 'N') {
-        targetGenome += toupper(line[i]);
-      }
+      targetGenome += line[i];
     }
   }
   return targetGenome;
@@ -127,40 +126,68 @@ void SCCGC::run() {
   }
 
   // parse reference genome file
+  cout << "Parsing reference sequence... " << std::endl;
   referenceSeq = parseReferenceGenome(referenceGenomePath);
 
+  // read target genome file
+  cout << "Reading target sequence... " << std::endl;
+  string targetSeq = readTargetGenome(inputFilePath);
+
+  cout << "Building global hash table... " << std::endl;
   buildGlobalHashTable(referenceSeq, 21);
 }
 
-void SCCGC::buildGlobalHashTable(string reference, int kmer_length) {
-  
+void SCCGC::buildGlobalHashTable(const string reference, int kmer_length) {
+  // there are L - k + 1 kmers in the sequence
   int iters = reference.length() - kmer_length + 1;
 
   // allocate hash table
-  kmer_location = std::vector<int>(maxseq);
+  kmer_location = std::vector<int>(ght_maxlen);
   next_kmer = std::vector<int>(iters);
   
-  for (int i = 0; i < maxseq; i++) {
-    kmer_location[i] = -1;
-  }
+  // set all hash table entries to default value
+  std::fill(kmer_location.begin(), kmer_location.end(), -1);
 
+  // calculate hashcode for every kmer
   for (int i = 0; i < iters; i++) {
-    cout << i << endl;
     string kmer = reference.substr(i, kmer_length);
     hash<string> hasher;
-    long key = labs(hasher(kmer));
-
-    if (key == -2147483648) {
-      key = 0;
-    }
-
-    while (key > maxseq - 1) {
-      key = key / 2;
-    }
-
-    cout << key << endl;
+    long key = labs(hasher(kmer)) % ght_maxlen;
 
     next_kmer[i] = kmer_location[static_cast<int>(key)];
     kmer_location[static_cast<int>(key)] = i;
   }
+}
+
+void SCCGC::buildLocalHashTable(const string reference, int kmer_length) {
+  // build local hash table
+
+}
+
+std::vector<std::pair<int, int>> SCCGC::getLowercasePositions(const string input) {
+  std::vector<std::pair<int, int>> positions;
+  bool multiple = false;
+  int start = 0;
+  for(int i = 0; i < input.length(); i++) {
+    if(std::islower(input[i])) {
+      if(multiple) {
+        continue;
+      } else {
+        start = i;
+        multiple = true;
+      }
+    } else {
+      if(multiple) {
+        positions.push_back(std::make_pair(start, i));
+        multiple = false;
+      }
+      start = 0;
+    }
+  }
+  
+  // check if the last subsequence is all lowercase
+  if(multiple) {
+    positions.push_back(std::make_pair(start, input.length()-1));
+  }
+  return positions;
 }
