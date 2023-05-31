@@ -4,7 +4,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 using namespace std;
+using HashTable = std::unordered_map<std::string, std::vector<int>>;
 
 class SCCGC {
  public:
@@ -16,7 +18,8 @@ class SCCGC {
   ~SCCGC(){};
   void run();
   void buildGlobalHashTable(const string reference, int kmer_length);
-  void buildLocalHashTable(const string reference, int kmer_length);
+  HashTable makeLocalHashTable(
+      const string reference, int kmer_length);
   std::vector<std::pair<int, int>> getLowercasePositions(const string input);
 
  private:
@@ -25,6 +28,7 @@ class SCCGC {
   std::string outputDirPath;
   std::string referenceSeq;
   int kmer_size;
+  static const int segment_length = 30000;
   static const int maxchar = 67108864;
   static const int ght_maxlen = 268435456;
   std::vector<int> kmer_location;
@@ -102,10 +106,9 @@ std::string readTargetGenome(std::string targetGenomePath) {
   getline(targetGenomeFile, line);
 
   while (getline(targetGenomeFile, line)) {
-    for (int i = 0; i < line.length(); i++) {
-      targetGenome += line[i];
-    }
+    targetGenome += line;
   }
+
   return targetGenome;
 }
 
@@ -163,8 +166,22 @@ void SCCGC::buildGlobalHashTable(const string reference, int kmer_length) {
   }
 }
 
-void SCCGC::buildLocalHashTable(const string reference, int kmer_length) {
-  // build local hash table
+// expects preprocessed reference segment
+HashTable SCCGC::makeLocalHashTable(
+    const string reference, int kmer_length) {
+  HashTable kmer_location_map;
+  int length = reference.length();
+
+  for (int i = 0; i < length - kmer_length + 1; i++) {
+    std::string current = reference.substr(i, kmer_length);
+    if (kmer_location_map.count(current) > 0) {
+      kmer_location_map[current].push_back(i);
+    } else {
+      kmer_location_map[current] = std::vector<int>(1, i);
+    }
+  }
+
+  return kmer_location_map;
 }
 
 std::vector<std::pair<int, int>> SCCGC::getLowercasePositions(
