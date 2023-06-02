@@ -17,10 +17,6 @@ class SCCGC {
         outputDirPath(outputDirPath){};
   ~SCCGC(){};
   void run();
-  void buildGlobalHashTable(const string reference, int kmer_length);
-  HashTable makeLocalHashTable(
-      const string reference, int kmer_length);
-  std::vector<std::pair<int, int>> getLowercasePositions(const string input);
 
  private:
   std::string referenceGenomePath;
@@ -30,9 +26,18 @@ class SCCGC {
   int kmer_size;
   static const int segment_length = 30000;
   static const int maxchar = 67108864;
-  static const int ght_maxlen = 268435456;
-  std::vector<int> kmer_location;
-  std::vector<int> next_kmer;
+  static const int ght_maxlen = 268435456; // max size of the global hash table
+  std::vector<int> kmer_location; // global hash table
+  std::vector<int> next_kmer; // linked list of kmers with the same hashcode
+
+  void buildGlobalHashTable(const string reference, int kmer_length);
+  HashTable makeLocalHashTable(
+      const string reference, int kmer_length);
+  std::vector<std::pair<int, int>> getLowercasePositions(const string input);
+  std::vector<std::pair<int, int>> getNPositions(const string input);
+
+  void matchLocal(const string target, const string reference, int kmer_length);
+  void matchGlobal(const string target, const string reference, int kmer_length);
 };
 
 int main(int argc, char **argv) {
@@ -140,8 +145,16 @@ void SCCGC::run() {
   cout << "Reading target sequence... " << std::endl;
   string targetSeq = readTargetGenome(inputFilePath);
 
-  cout << "Building global hash table... " << std::endl;
-  buildGlobalHashTable(referenceSeq, 21);
+  // local matching phase
+  cout << "Local matching phase... " << std::endl;
+  matchLocal(targetSeq, referenceSeq, kmer_size);
+
+  // Global matching phase
+  cout << "Global matching phase... " << std::endl;
+  matchGlobal(targetSeq, referenceSeq, kmer_size);
+
+  // cout << "Building global hash table... " << std::endl;
+  // buildGlobalHashTable(referenceSeq, 21);
 }
 
 void SCCGC::buildGlobalHashTable(const string reference, int kmer_length) {
@@ -207,6 +220,34 @@ std::vector<std::pair<int, int>> SCCGC::getLowercasePositions(
   }
 
   // check if the last subsequence is all lowercase
+  if (multiple) {
+    positions.push_back(std::make_pair(start, input.length() - 1));
+  }
+  return positions;
+}
+
+std::vector<std::pair<int, int>> SCCGC::getNPositions(const string input) {
+  std::vector<std::pair<int, int>> positions;
+  bool multiple = false;
+  int start = 0;
+  for (int i = 0; i < input.length(); i++) {
+    if (input[i] == 'N') {
+      if (multiple) {
+        continue;
+      } else {
+        start = i;
+        multiple = true;
+      }
+    } else {
+      if (multiple) {
+        positions.push_back(std::make_pair(start, i));
+        multiple = false;
+      }
+      start = 0;
+    }
+  }
+
+  // check if the last subsequence is all N characters
   if (multiple) {
     positions.push_back(std::make_pair(start, input.length() - 1));
   }
