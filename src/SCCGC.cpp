@@ -26,21 +26,21 @@ class SCCGC {
   int kmer_size;
   static const int segment_length = 30000;
   static const int maxchar = 67108864;
-  static const int ght_maxlen = 268435456; // max size of the global hash table
-  std::vector<int> kmer_location; // global hash table
-  std::vector<int> next_kmer; // linked list of kmers with the same hashcode
+  static const int ght_maxlen = 268435456;  // max size of the global hash table
+  std::vector<int> kmer_location;           // global hash table
+  std::vector<int> next_kmer;  // linked list of kmers with the same hashcode
 
   void buildGlobalHashTable(const string reference, int kmer_length);
-  HashTable makeLocalHashTable(
-      const string reference, int kmer_length);
+  HashTable makeLocalHashTable(const string reference, int kmer_length);
   std::vector<std::pair<int, int>> getLowercasePositions(const string input);
   std::vector<std::pair<int, int>> getNPositions(const string input);
 
   void matchLocal(const string target, const string reference, int kmer_length);
-  void matchGlobal(const string target, const string reference, int kmer_length);
+  void matchGlobal(const string target, const string reference,
+                   int kmer_length);
 };
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   // check number of arguments
   if (argc < 4) {
     std::cout << "Usage: " << argv[0]
@@ -180,8 +180,7 @@ void SCCGC::buildGlobalHashTable(const string reference, int kmer_length) {
 }
 
 // expects preprocessed reference segment
-HashTable SCCGC::makeLocalHashTable(
-    const string reference, int kmer_length) {
+HashTable SCCGC::makeLocalHashTable(const string reference, int kmer_length) {
   HashTable kmer_location_map;
   int length = reference.length();
 
@@ -252,4 +251,29 @@ std::vector<std::pair<int, int>> SCCGC::getNPositions(const string input) {
     positions.push_back(std::make_pair(start, input.length() - 1));
   }
   return positions;
+}
+
+void SCCGC::matchLocal(const string reference, const string target, int kmer_size) {
+  
+}
+
+ //global matching
+void SCCGC::matchGlobal(const string reference, const string target, int kmer_size) {
+  std::vector<std::pair<int, int>> nPositions = getNPositions(target);
+
+  std::ofstream interimFile("tempFile.txt");
+  for (const auto& pos : nPositions) {
+    interimFile << pos.first << " " << pos.second << std::endl;
+  }
+  interimFile.close();
+
+  std::string processedRef = reference;
+  std::string processedTarg = target;
+
+  for (const auto& pos : nPositions) {
+    processedRef.erase(pos.first, pos.second - pos.first + 1);
+    processedTarg.erase(pos.first, pos.second - pos.first + 1);
+  }
+
+  buildGlobalHashTable(processedRef, kmer_size);
 }
