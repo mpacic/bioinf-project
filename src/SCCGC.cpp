@@ -82,6 +82,7 @@ std::string parseReferenceGenome(std::string referenceGenomePath) {
   // check file opened successfully
   if (!referenceGenomeFile.is_open()) {
     std::cout << "Error: Failed to open reference genome file" << std::endl;
+    std::exit(1);
   }
 
   string referenceGenome = "";
@@ -105,6 +106,7 @@ std::string readReferenceGenome(std::string referenceGenomePath) {
   // check file opened successfully
   if (!referenceGenomeFile.is_open()) {
     std::cout << "Error: Failed to open reference genome file" << std::endl;
+    std::exit(1);
   }
 
   string referenceGenome = "";
@@ -124,6 +126,7 @@ std::string readTargetGenome(std::string targetGenomePath) {
   // check file opened successfully
   if (!targetGenomeFile.is_open()) {
     std::cout << "Error: Failed to open target genome file" << std::endl;
+    std::exit(1);
   }
 
   string targetGenome = "";
@@ -149,6 +152,7 @@ void SCCGC::run() {
 
   if (!inputFile.is_open()) {
     std::cout << "Error: Failed to open input file" << std::endl;
+    std::exit(1);
   }
 
   // parse reference genome file
@@ -168,9 +172,6 @@ void SCCGC::run() {
   // Global matching phase
   cout << "Global matching phase... " << std::endl;
   matchGlobal(targetSeq, referenceSeq, kmer_size);
-
-  // cout << "Building global hash table... " << std::endl;
-  // buildGlobalHashTable(referenceSeq, 21);
 }
 
 void SCCGC::buildGlobalHashTable(const string reference, int kmer_length) {
