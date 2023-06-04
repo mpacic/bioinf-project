@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <algorithm>
 #include <unordered_map>
 #include <vector>
 
@@ -21,6 +22,7 @@ class SCCGC {
  private:
   std::string referenceGenomePath;
   std::string inputFilePath;
+  std::string interimFilePath;
   std::string outputDirPath;
   std::string referenceSeq;
   int kmer_size;
@@ -98,6 +100,25 @@ std::string parseReferenceGenome(std::string referenceGenomePath) {
   return referenceGenome;
 }
 
+std::string readReferenceGenome(std::string referenceGenomePath) {
+  ifstream referenceGenomeFile(referenceGenomePath);
+  // check file opened successfully
+  if (!referenceGenomeFile.is_open()) {
+    std::cout << "Error: Failed to open reference genome file" << std::endl;
+  }
+
+  string referenceGenome = "";
+  string line;
+  // skip first line
+  getline(referenceGenomeFile, line);
+
+  while (getline(referenceGenomeFile, line)) {
+    referenceGenome += line;
+  }
+
+  return referenceGenome;
+}
+
 std::string readTargetGenome(std::string targetGenomePath) {
   ifstream targetGenomeFile(targetGenomePath);
   // check file opened successfully
@@ -124,26 +145,21 @@ void SCCGC::run() {
 
   // open files
   ifstream inputFile(this->inputFilePath);
+  interimFilePath = outputDirPath + "/interim.txt";
 
   if (!inputFile.is_open()) {
     std::cout << "Error: Failed to open input file" << std::endl;
   }
 
-  // tempfile
-  string tempfilePath = outputDirPath + "/intermediate.txt";
-  ofstream tempfile(tempfilePath);
-  if (!tempfile.is_open()) {
-    std::cout << "Error: Failed to open intermediate file:" << tempfilePath
-              << std::endl;
-  }
-
   // parse reference genome file
   cout << "Parsing reference sequence... " << std::endl;
-  referenceSeq = parseReferenceGenome(referenceGenomePath);
+  referenceSeq = readReferenceGenome(referenceGenomePath);
+  std::transform(referenceSeq.begin(), referenceSeq.end(), referenceSeq.begin(), ::toupper);
 
   // read target genome file
   cout << "Reading target sequence... " << std::endl;
   string targetSeq = readTargetGenome(inputFilePath);
+  std::transform(targetSeq.begin(), targetSeq.end(), targetSeq.begin(), ::toupper);
 
   // local matching phase
   cout << "Local matching phase... " << std::endl;
@@ -180,17 +196,15 @@ void SCCGC::buildGlobalHashTable(const string reference, int kmer_length) {
 }
 
 // expects preprocessed reference segment
-HashTable SCCGC::makeLocalHashTable(const string reference, int kmer_length) {
-  HashTable kmer_location_map;
+HashTable SCCGC::makeLocalHashTable(
+    const string reference, int kmer_length) {
+  HashTable kmer_location_map(reference.length() - kmer_length + 1, std::hash<std::string>{});
   int length = reference.length();
+  kmer_location_map.reserve(length - kmer_length + 1);
 
   for (int i = 0; i < length - kmer_length + 1; i++) {
     std::string current = reference.substr(i, kmer_length);
-    if (kmer_location_map.count(current) > 0) {
-      kmer_location_map[current].push_back(i);
-    } else {
-      kmer_location_map[current] = std::vector<int>(1, i);
-    }
+    kmer_location_map[current].push_back(i);
   }
 
   return kmer_location_map;
@@ -253,10 +267,6 @@ std::vector<std::pair<int, int>> SCCGC::getNPositions(const string input) {
   return positions;
 }
 
-void SCCGC::matchLocal(const string reference, const string target, int kmer_size) {
-  
-}
-
  //global matching
 void SCCGC::matchGlobal(const string reference, const string target, int kmer_size) {
   std::vector<std::pair<int, int>> nPositions = getNPositions(target);
@@ -276,4 +286,57 @@ void SCCGC::matchGlobal(const string reference, const string target, int kmer_si
   }
 
   buildGlobalHashTable(processedRef, kmer_size);
+}
+
+// local matching
+void SCCGC::matchLocal(const string target, const string reference,
+                      int kmer_length) {
+  std::ofstream interimStream(interimFilePath);
+  long total_length = std::min(target.length(), reference.length());
+  long num_segments = total_length / segment_length;
+  cout << "total_length:" << total_length << endl;
+  cout << "target.length():" << target.length() << endl;
+  cout << "reference.length():" << reference.length() << endl;
+  cout << "num_segments:" << num_segments << endl;
+  for (int i = 0; i < num_segments; i++) {
+    string t_seg = target.substr(i * segment_length, segment_length);
+    string r_seg = reference.substr(i * segment_length, segment_length);
+    HashTable hashtable = makeLocalHashTable(r_seg, kmer_length);
+    for (int j = 0; j < segment_length - kmer_length + 1; j++) {
+      string kmer = t_seg.substr(j, kmer_length);
+      if (hashtable.count(kmer) > 0) { // check if key exists
+        vector<int> kmer_positions = hashtable[kmer];
+        int longest_len = 0;
+        int longest_pos = 0;
+        for (int pos : kmer_positions) {
+          int ext = 0; // match extension length
+          // find longest match between target and reference 
+          while (j + kmer_length + ext < t_seg.length()
+              && pos + kmer_length + ext < r_seg.length()
+              && r_seg[pos + kmer_length + ext] ==  t_seg[j + kmer_length + ext]) {
+            ext++;
+          }
+          // if current match is longer than previous longest match, update
+          if (kmer_length + ext - 1 > longest_len) {
+            longest_len = kmer_length + ext - 1;
+            longest_pos = pos;
+          }
+        }
+        // update index to skip over longest match
+        j += longest_len - 1;
+        // write to file
+        interimStream << i*segment_length + longest_pos << "-" << longest_len << "-";
+      } else {
+        // write unmatched character to file
+        interimStream << t_seg[j];
+      }
+    }
+    // write newline to file after segment
+    interimStream << endl;
+  }
+
+  interimStream.close();
+
+  // last segment
+
 }
