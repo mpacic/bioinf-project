@@ -37,3 +37,6 @@
 # Directories
 fasta/
 result/
+
+# Utilities
+7za
