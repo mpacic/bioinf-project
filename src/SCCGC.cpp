@@ -46,6 +46,8 @@ class SCCGC {
 
   void postprocess();
   void run7zip(const string filename);
+
+  bool allN(const string input);
 };
 
 int main(int argc, char** argv) {
@@ -397,27 +399,25 @@ void SCCGC::matchLocal(const string target, const string reference,
             longest_pos = pos;
           }
         }
+        
+        // write to file
+        if (j != 0) {
+          ss << endl;
+        }
+        int start = i*segment_length + longest_pos;
+        int end = start + longest_len;
+        ss <<  start << "," << end << endl;
+
         // update index to skip over longest match
         j += longest_len - 1;
-        // write to file
-        ss << i*segment_length + longest_pos << "," << longest_len;
       } else {
         // write unmatched character to file
         ss << t_seg[j];
       }
     }
 
-    // check if the segment is all N characters
-    bool allN = true;
-    for (int j = 0; j < ss.str().length(); j++) {
-      if (ss.str()[j] != 'N') {
-        allN = false;
-        break;
-      }
-    }
-
     // check ratio of directly stored characters
-    if (ss.str().length() > segment_length * T1 && !allN) {
+    if (ss.str().length() > segment_length * T1 && !allN(t_seg)) {
       unmatched_segments++;
     }
 
@@ -426,11 +426,12 @@ void SCCGC::matchLocal(const string target, const string reference,
       global = true;
       interimStream.close();
       std::remove(interimFilePath.c_str());
+      cout << "exited from local matching on segment " << i << endl;
       return;
     }
 
     // write newline to file after segment
-    interimStream << ss.str() << endl;
+    interimStream << ss.str();
   }
 
   // last segment
@@ -457,8 +458,17 @@ void SCCGC::matchLocal(const string target, const string reference,
           longest_pos = pos;
         }
       }
+
+      // write to file
+      if (j != 0) {
+        interimStream << endl;
+      }
+      int start = num_segments*segment_length + longest_pos;
+      int end = start + longest_len;
+      interimStream <<  start << "," << end << endl;
+
+      // update index to skip over longest match
       j += longest_len - 1;
-      interimStream << num_segments*segment_length + longest_pos << "," << longest_len;
     } else {
       interimStream << t_seg[j];
     }
@@ -475,4 +485,13 @@ void SCCGC::run7zip(const string filename) {
 void SCCGC::postprocess() {
   std::vector<int> posList;
 
+}
+
+bool SCCGC::allN(const string input) {
+  for (int i = 0; i < input.length(); i++) {
+    if (input[i] != 'N') {
+      return false;
+    }
+  }
+  return true;
 }
