@@ -31,6 +31,9 @@ class SCCGC {
   static const int ght_maxlen = 268435456;  // max size of the global hash table
   std::vector<int> kmer_location;           // global hash table
   std::vector<int> next_kmer;  // linked list of kmers with the same hashcode
+  float T1 = 0.5; // threshold for local matching
+  int T2 = 4; // similarity threshold
+  bool global = false;
 
   void buildGlobalHashTable(const string reference, int kmer_length);
   HashTable makeLocalHashTable(const string reference, int kmer_length);
@@ -40,6 +43,9 @@ class SCCGC {
   void matchLocal(const string target, const string reference, int kmer_length);
   void matchGlobal(const string target, const string reference,
                    int kmer_length);
+
+  void postprocess();
+  void run7zip(const string filename);
 };
 
 int main(int argc, char** argv) {
@@ -149,11 +155,16 @@ void SCCGC::run() {
   // open files
   ifstream inputFile(this->inputFilePath);
   interimFilePath = outputDirPath + "/interim.txt";
+  ofstream outputStream(outputDirPath + "/output.sccg");
 
   if (!inputFile.is_open()) {
     std::cout << "Error: Failed to open input file" << std::endl;
     std::exit(1);
   }
+
+  std::string targetHeader;
+  std::getline(inputFile, targetHeader);
+  inputFile.close();
 
   // parse reference genome file
   cout << "Parsing reference sequence... " << std::endl;
@@ -163,11 +174,63 @@ void SCCGC::run() {
   // read target genome file
   cout << "Reading target sequence... " << std::endl;
   string targetSeq = readTargetGenome(inputFilePath);
+
+  // perform preprocessing
+
+  //write target header to output file
+  outputStream << targetHeader << std::endl;
+
+
+  std::vector<std::pair<int, int>> lowercasePositions = getLowercasePositions(targetSeq);
+  // convert target sequence to uppercase
   std::transform(targetSeq.begin(), targetSeq.end(), targetSeq.begin(), ::toupper);
+
+  // write lowercase positions to file
+  int temp_end = 0;
+  for (const auto& pos : lowercasePositions) {
+    outputStream << pos.first - temp_end << " " << pos.second - pos.first << std::endl;
+    temp_end = pos.second;
+  }
+  outputStream << std::endl;
+
+  // write N positions to file
+  // std::vector<std::pair<int, int>> nPositions = getNPositions(targetSeq);
+  // for (const auto& pos : nPositions) {
+  //   outputStream << pos.first << " " << pos.second << std::endl;
+  // }
+  // outputStream << std::endl;
+
+  // outputStream.close();
+  // std::exit(0);
 
   // local matching phase
   cout << "Local matching phase... " << std::endl;
   matchLocal(targetSeq, referenceSeq, kmer_size);
+
+  if (!global) {
+  // write local matching result to output file
+    ifstream interimStream(interimFilePath);
+    string line;
+    while (getline(interimStream, line)) {
+      outputStream << line << std::endl;
+    }
+
+    // delete interim file
+    // std::remove(interimFilePath.c_str());
+
+    // close output file
+    outputStream.close();
+
+    // run PPMd using 7zip
+    cout << "Running PPMd... " << std::endl;
+    std::string outputFilePath = outputDirPath + "/output.sccg";
+    run7zip(outputFilePath);
+
+    // delete uncompressed output file
+    // std::remove(outputFilePath.c_str());
+
+    std::exit(0);
+  }
 
   // Global matching phase
   cout << "Global matching phase... " << std::endl;
@@ -211,6 +274,7 @@ HashTable SCCGC::makeLocalHashTable(
   return kmer_location_map;
 }
 
+// returns a vector of pairs of start and end positions of lowercase subsequences
 std::vector<std::pair<int, int>> SCCGC::getLowercasePositions(
     const string input) {
   std::vector<std::pair<int, int>> positions;
@@ -326,7 +390,7 @@ void SCCGC::matchLocal(const string target, const string reference,
         // update index to skip over longest match
         j += longest_len - 1;
         // write to file
-        interimStream << i*segment_length + longest_pos << "-" << longest_len << "-";
+        interimStream << i*segment_length + longest_pos << "," << longest_len;
       } else {
         // write unmatched character to file
         interimStream << t_seg[j];
@@ -336,8 +400,46 @@ void SCCGC::matchLocal(const string target, const string reference,
     interimStream << endl;
   }
 
-  interimStream.close();
-
   // last segment
+  string t_seg = target.substr(num_segments * segment_length, target.length() - num_segments * segment_length);
+  string r_seg = reference.substr(num_segments * segment_length, reference.length() - num_segments * segment_length);
+  HashTable hashtable = makeLocalHashTable(r_seg, kmer_length);
+  for (int j = 0; j < t_seg.length() - kmer_length + 1; j++) {
+    string kmer = t_seg.substr(j, kmer_length);
+    if (hashtable.count(kmer) > 0) { // check if key exists
+      vector<int> kmer_positions = hashtable[kmer];
+      int longest_len = 0;
+      int longest_pos = 0;
+      for (int pos : kmer_positions) {
+        int ext = 0; // match extension length
+        // find longest match between target and reference 
+        while (j + kmer_length + ext < t_seg.length()
+            && pos + kmer_length + ext < r_seg.length()
+            && r_seg[pos + kmer_length + ext] ==  t_seg[j + kmer_length + ext]) {
+          ext++;
+        }
+        // if current match is longer than previous longest match, update
+        if (kmer_length + ext - 1 > longest_len) {
+          longest_len = kmer_length + ext - 1;
+          longest_pos = pos;
+        }
+      }
+      j += longest_len - 1;
+      interimStream << num_segments*segment_length + longest_pos << "," << longest_len;
+    } else {
+      interimStream << t_seg[j];
+    }
+  }
+  interimStream << endl;
+  interimStream.close();
+}
+
+void SCCGC::run7zip(const string filename) {
+  string command = "../7za a -m0=PPMd " + filename + ".7z " + filename;
+  system(command.c_str());
+}
+
+void SCCGC::postprocess() {
+  std::vector<int> posList;
 
 }
