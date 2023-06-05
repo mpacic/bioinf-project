@@ -359,14 +359,24 @@ void SCCGC::matchLocal(const string target, const string reference,
   std::ofstream interimStream(interimFilePath);
   long total_length = std::min(target.length(), reference.length());
   long num_segments = total_length / segment_length;
+  int unmatched_segments = 0;
+
+  if (num_segments < 5) {
+    global = true;
+    return;
+  }
+
+  // debug info
   cout << "total_length:" << total_length << endl;
   cout << "target.length():" << target.length() << endl;
   cout << "reference.length():" << reference.length() << endl;
   cout << "num_segments:" << num_segments << endl;
+
   for (int i = 0; i < num_segments; i++) {
     string t_seg = target.substr(i * segment_length, segment_length);
     string r_seg = reference.substr(i * segment_length, segment_length);
     HashTable hashtable = makeLocalHashTable(r_seg, kmer_length);
+    std::ostringstream ss;
     for (int j = 0; j < segment_length - kmer_length + 1; j++) {
       string kmer = t_seg.substr(j, kmer_length);
       if (hashtable.count(kmer) > 0) { // check if key exists
@@ -390,14 +400,37 @@ void SCCGC::matchLocal(const string target, const string reference,
         // update index to skip over longest match
         j += longest_len - 1;
         // write to file
-        interimStream << i*segment_length + longest_pos << "," << longest_len;
+        ss << i*segment_length + longest_pos << "," << longest_len;
       } else {
         // write unmatched character to file
-        interimStream << t_seg[j];
+        ss << t_seg[j];
       }
     }
+
+    // check if the segment is all N characters
+    bool allN = true;
+    for (int j = 0; j < ss.str().length(); j++) {
+      if (ss.str()[j] != 'N') {
+        allN = false;
+        break;
+      }
+    }
+
+    // check ratio of directly stored characters
+    if (ss.str().length() > segment_length * T1 && !allN) {
+      unmatched_segments++;
+    }
+
+    // check number of unmatched segments
+    if (unmatched_segments > T2) {
+      global = true;
+      interimStream.close();
+      std::remove(interimFilePath.c_str());
+      return;
+    }
+
     // write newline to file after segment
-    interimStream << endl;
+    interimStream << ss.str() << endl;
   }
 
   // last segment
