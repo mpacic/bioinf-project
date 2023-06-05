@@ -1,23 +1,25 @@
 #include <iostream>
 #include <filesystem>
 #include <string>
+#include <fstream>
+#include <vector>
 
 using namespace std;
 
 class SCCGD {
   public:
-    SCCGD(const char* reference_genome_file, const char* input_file,
-          const char* output_directory)
-        : reference_genome_file_(reference_genome_file),
-          input_file_(input_file),
-          output_directory_(output_directory) {}
+    SCCGD(std::string referenceGenomePath, std::string inputFilePath,
+        std::string outputDirPath)
+      : referenceGenomePath(referenceGenomePath),
+        inputFilePath(inputFilePath),
+        outputDirPath(outputDirPath){};
   
     void run();
   
   private:
-    const string reference_genome_file_;
-    const string input_file_;
-    const string output_directory_;
+    const string referenceGenomePath;
+    const string inputFilePath;
+    const string outputDirPath;
 };
 
 int main(int argc, char** argv) {
@@ -58,5 +60,59 @@ int main(int argc, char** argv) {
 void SCCGD::run() {
   std::cout << "Running SCCGD" << std::endl;
 
+  std::string referenceSeq = readReferenceGenome(referenceGenomePath);
 
+  std::ofstream interimFile(outputDirPath + "/interim.txt");
+
+  std::ofstream outputFile(outputDirPath + "/output.txt");
+
+  // read input file
+  std::ifstream inputFile(inputFilePath);
+  // check file opened successfully
+  if (!inputFile.is_open()) {
+    std::cout << "Error: Failed to open input file" << std::endl;
+    std::exit(1);
+  }
+  std::string line;
+
+  // read header
+  std::string targetHeader;
+  getline(inputFile, targetHeader);
+  outputFile << targetHeader << std::endl;
+
+  // read lowercase positions
+  std::string lowercasePositions;
+  getline(inputFile, lowercasePositions);
+  std::istringstream iss(lowercasePositions);
+  int start, length;
+  std::vector<std::pair<int, int>> lpos;
+  while (iss >> start >> length) {
+    lpos.push_back(std::make_pair(start, length));
+  }
+
+  // read target sequence
+  std::string targetSeq;
+  getline(inputFile, targetSeq);
+
+
+}
+
+std::string readReferenceGenome(std::string referenceGenomePath) {
+  ifstream referenceGenomeFile(referenceGenomePath);
+  // check file opened successfully
+  if (!referenceGenomeFile.is_open()) {
+    std::cout << "Error: Failed to open referencreade genome file" << std::endl;
+    std::exit(1);
+  }
+
+  string referenceGenome = "";
+  string line;
+  // skip first line
+  getline(referenceGenomeFile, line);
+
+  while (getline(referenceGenomeFile, line)) {
+    referenceGenome += line;
+  }
+
+  return referenceGenome;
 }
