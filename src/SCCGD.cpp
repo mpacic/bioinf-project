@@ -20,6 +20,10 @@ class SCCGD {
     const string referenceGenomePath;
     const string inputFilePath;
     const string outputDirPath;
+    string targetHeader;
+    int lineLength;
+
+    std::string readReferenceGenome(std::string referenceGenomePath);
 };
 
 int main(int argc, char** argv) {
@@ -73,14 +77,21 @@ void SCCGD::run() {
     std::cout << "Error: Failed to open input file" << std::endl;
     std::exit(1);
   }
-  std::string line;
+
+  if (!outputFile.is_open()) {
+    std::cout << "Error: Failed to open output file" << std::endl;
+    std::exit(1);
+  }
 
   // read header
-  std::string targetHeader;
   getline(inputFile, targetHeader);
+  string line;
+  getline(inputFile, line);
+  lineLength = stoi(line);
   outputFile << targetHeader << std::endl;
 
   // read lowercase positions
+  cout << "Reading lowercase positions..." << endl;
   std::string lowercasePositions;
   getline(inputFile, lowercasePositions);
   std::istringstream iss(lowercasePositions);
@@ -90,14 +101,43 @@ void SCCGD::run() {
     lpos.push_back(std::make_pair(start, length));
   }
 
+  // read N positions
+  cout << "Reading N positions..." << endl;
+  std::string NPositions;
+  getline(inputFile, NPositions);
+
   // read target sequence
+  cout << "Reading target sequence..." << endl;
+  std::string targetUncompressed = "";
   std::string targetSeq;
-  getline(inputFile, targetSeq);
+  int prevEnd = 0;
+  while (getline(inputFile, targetSeq)) {
+    if (targetSeq.find(',') != std::string::npos) {
+      int start = stoi(targetSeq.substr(0, targetSeq.find(',')));
+      int subseq_len = stoi(targetSeq.substr(targetSeq.find(',') + 1));
+      targetUncompressed += referenceSeq.substr(prevEnd + start, subseq_len);
+      prevEnd += start + subseq_len;
+    } else {
+      targetUncompressed += targetSeq;
+    }
+  }
 
+  // to lowercase
+  cout << "Updating lowercase positions..." << endl;
+  int offset = 0;
+  for (auto pos : lpos) {
+    for (int i = pos.first; i < pos.first + pos.second; i++) {
+      targetUncompressed[offset + i] = tolower(targetUncompressed[offset + i]);
+    }
+    offset += pos.first + pos.second;
+  }
 
+  for (int i = 0; i < targetUncompressed.length(); i += lineLength) {
+    outputFile << targetUncompressed.substr(i, lineLength) << std::endl;
+  }
 }
 
-std::string readReferenceGenome(std::string referenceGenomePath) {
+std::string SCCGD::readReferenceGenome(std::string referenceGenomePath) {
   ifstream referenceGenomeFile(referenceGenomePath);
   // check file opened successfully
   if (!referenceGenomeFile.is_open()) {
