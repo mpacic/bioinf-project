@@ -3,6 +3,7 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <unistd.h>
 
 using namespace std;
 
@@ -25,6 +26,19 @@ class SCCGD {
 
     std::string readReferenceGenome(std::string referenceGenomePath);
 };
+
+
+unsigned long long getMemoryUsageInKB() {
+    std::ifstream statm("/proc/self/statm");
+    unsigned long long size, resident, share, text, lib, data, dt;
+    statm >> size >> resident >> share >> text >> lib >> data >> dt;
+    return resident * (unsigned long long)getpagesize() / 1024;
+}
+
+void printMemoryUsage() {
+  long long memusage = getMemoryUsageInKB();
+  cout << "Memory usage: " << memusage << " KB" << endl;
+}
 
 int main(int argc, char** argv) {
   // check number of arguments
@@ -121,6 +135,8 @@ void SCCGD::run() {
       targetUncompressed += targetSeq;
     }
   }
+
+  printMemoryUsage();
 
   // to lowercase
   cout << "Updating lowercase positions..." << endl;
