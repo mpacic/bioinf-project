@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <vector>
+#include <unistd.h>
 
 using namespace std;
 using HashTable = std::unordered_map<std::string, std::vector<int>>;
@@ -51,6 +52,18 @@ class SCCGC {
 
   bool allN(const string input);
 };
+
+unsigned long long getMemoryUsageInKB() {
+    std::ifstream statm("/proc/self/statm");
+    unsigned long long size, resident, share, text, lib, data, dt;
+    statm >> size >> resident >> share >> text >> lib >> data >> dt;
+    return resident * (unsigned long long)getpagesize() / 1024;
+}
+
+void printMemoryUsage() {
+  long long memusage = getMemoryUsageInKB();
+  cout << "Memory usage: " << memusage << " KB" << endl;
+}
 
 int main(int argc, char** argv) {
   // check number of arguments
@@ -225,6 +238,8 @@ void SCCGC::run() {
     // delete uncompressed output file
     // std::remove(outputFilePath.c_str());
 
+    printMemoryUsage();
+
     std::exit(0);
   }
 
@@ -254,6 +269,8 @@ void SCCGC::run() {
   cout << "Running PPMd... " << std::endl;
   std::string outputFilePath = outputDirPath + "/output.sccg";
   run7zip(outputFilePath);
+
+  printMemoryUsage();
 
   // delete uncompressed output file
   // std::remove(outputFilePath.c_str());
