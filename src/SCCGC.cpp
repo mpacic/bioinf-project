@@ -34,6 +34,8 @@ class SCCGC {
   float T1 = 0.5; // threshold for local matching
   int T2 = 4; // similarity threshold
   bool global = false;
+  std::string targetHeader;
+  int lineLength;
 
   void buildGlobalHashTable(const string reference, int kmer_length);
   HashTable makeLocalHashTable(const string reference, int kmer_length);
@@ -164,8 +166,16 @@ void SCCGC::run() {
     std::exit(1);
   }
 
-  std::string targetHeader;
+  if (!outputStream.is_open()) {
+    std::cout << "Error: Failed to open output file" << std::endl;
+    std::exit(1);
+  }
+
   std::getline(inputFile, targetHeader);
+
+  std::string line;
+  std::getline(inputFile, line);
+  int lineLength = line.length();
   inputFile.close();
 
   // parse reference genome file
@@ -177,11 +187,8 @@ void SCCGC::run() {
   cout << "Reading target sequence... " << std::endl;
   string targetSeq = readTargetGenome(inputFilePath);
 
-  // perform preprocessing
-
-  //write target header to output file
-  outputStream << targetHeader << std::endl;
-
+  //write target header and line length to output file
+  outputStream << targetHeader << std::endl << lineLength << std::endl;
 
   std::vector<std::pair<int, int>> lowercasePositions = getLowercasePositions(targetSeq);
   // convert target sequence to uppercase
@@ -190,20 +197,10 @@ void SCCGC::run() {
   // write lowercase positions to file
   int temp_end = 0;
   for (const auto& pos : lowercasePositions) {
-    outputStream << pos.first - temp_end << " " << pos.second - pos.first << std::endl;
+    outputStream << pos.first - temp_end << " " << pos.second - pos.first << " ";
     temp_end = pos.second;
   }
-  outputStream << std::endl;
-
-  // write N positions to file
-  // std::vector<std::pair<int, int>> nPositions = getNPositions(targetSeq);
-  // for (const auto& pos : nPositions) {
-  //   outputStream << pos.first << " " << pos.second << std::endl;
-  // }
-  // outputStream << std::endl;
-
-  // outputStream.close();
-  // std::exit(0);
+  outputStream << std::endl << std::endl;
 
   // local matching phase
   cout << "Local matching phase... " << std::endl;
@@ -211,11 +208,8 @@ void SCCGC::run() {
 
   if (!global) {
   // write local matching result to output file
-    ifstream interimStream(interimFilePath);
-    string line;
-    while (getline(interimStream, line)) {
-      outputStream << line << std::endl;
-    }
+    cout << "Postprocessing... " << std::endl;
+    postprocess();
 
     // delete interim file
     // std::remove(interimFilePath.c_str());
@@ -235,8 +229,34 @@ void SCCGC::run() {
   }
 
   // Global matching phase
+
   cout << "Global matching phase... " << std::endl;
+
+  // write N positions to file
+  std::vector<std::pair<int, int>> nPositions = getNPositions(targetSeq);
+  for (const auto& pos : nPositions) {
+    outputStream << pos.first << " " << pos.second << " ";
+  }
+  outputStream << std::endl;
+  
   matchGlobal(targetSeq, referenceSeq, kmer_size);
+
+  cout << "Postprocessing... " << std::endl;
+  postprocess();
+
+  // delete interim file
+  // std::remove(interimFilePath.c_str());
+
+  // close output file
+  outputStream.close();
+
+  // run PPMd using 7zip
+  cout << "Running PPMd... " << std::endl;
+  std::string outputFilePath = outputDirPath + "/output.sccg";
+  run7zip(outputFilePath);
+
+  // delete uncompressed output file
+  // std::remove(outputFilePath.c_str());
 }
 
 void SCCGC::buildGlobalHashTable(const string reference, int kmer_length) {
@@ -495,12 +515,63 @@ void SCCGC::matchLocal(const string target, const string reference,
 }
 
 void SCCGC::run7zip(const string filename) {
-  string command = "../7za a -m0=PPMd " + filename + ".7z " + filename;
+  string command = "../7za a -m0=PPMd " + filename + ".7z " + filename + " > /dev/null";
   system(command.c_str());
 }
 
+// merging of continuous matches and delta encoding
 void SCCGC::postprocess() {
-  std::vector<int> posList;
+  
+  std::ifstream interimStream(interimFilePath);
+  std::string line;
+  std::vector<int> positions;
+  std::stringstream ss;
+
+  // merge continuous matches
+  while (std::getline(interimStream, line)) {
+    if (line.find(',') != std::string::npos) {
+      int start = stoi(line.substr(0, line.find(',')));
+      int end = stoi(line.substr(line.find(',') + 1));
+      if (positions.size() > 0) {
+        if (start != positions.back() + 1) {
+          ss << start << "," << end << std::endl;
+          positions.clear();
+        }
+      }
+      positions.push_back(start);
+      positions.push_back(end);
+    } else if (line.length() > 0) {
+      if (positions.size() > 0) {
+        ss << positions.front() << "," << positions.back() << std::endl;
+        positions.clear();
+      }
+      ss << line << std::endl;
+    }
+  }
+  if (positions.size() > 0) {
+    ss << positions.front() << "," << positions.back() << std::endl;
+  }
+  interimStream.close();
+
+  // delta encoding
+  std::stringstream oss;
+  bool successive = false;
+  int prev = 0;
+  while (std::getline(ss, line)) {
+    if (line.find(',') != std::string::npos) {
+      int start = stoi(line.substr(0, line.find(',')));
+      int end = stoi(line.substr(line.find(',') + 1));
+      oss << start - prev << "," << end - start << std::endl;
+      prev = end;
+    } else if (line.length() > 0) {
+      oss << line << std::endl;
+    }
+  }
+
+  // write to file
+  std::ofstream outputStream(outputDirPath + "/output.sccg", std::ios::app);
+  outputStream << oss.str() << endl;
+  outputStream.close();
 }
 
 bool SCCGC::allN(const string input) {
