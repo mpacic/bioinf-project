@@ -379,25 +379,36 @@ void SCCGC::matchLocal(const string target, const string reference,
     string r_seg = reference.substr(i * segment_length, segment_length);
     HashTable hashtable = makeLocalHashTable(r_seg, kmer_length);
     std::ostringstream ss;
-    for (int j = 0; j < segment_length - kmer_length + 1; j++) {
+    for (int j = 0; j < segment_length; j++) {
+      if (segment_length - j < kmer_length) {
+        ss << t_seg[j];
+        continue;
+      }
       string kmer = t_seg.substr(j, kmer_length);
       if (hashtable.count(kmer) > 0) { // check if key exists
         vector<int> kmer_positions = hashtable[kmer];
-        int longest_len = 0;
-        int longest_pos = 0;
+        int longest_len = -1;
+        int longest_pos = -1;
         for (int pos : kmer_positions) {
-          int ext = 0; // match extension length
-          // find longest match between target and reference 
-          while (j + kmer_length + ext < t_seg.length()
-              && pos + kmer_length + ext < r_seg.length()
-              && r_seg[pos + kmer_length + ext] ==  t_seg[j + kmer_length + ext]) {
-            ext++;
+          if (t_seg.substr(j, kmer_length) == r_seg.substr(pos, kmer_length)) {
+            int ext = 0; // match extension length
+            // find longest match between target and reference 
+            while (j + kmer_length + ext < t_seg.length()
+                && pos + kmer_length + ext < r_seg.length()
+                && r_seg[pos + kmer_length + ext] == t_seg[j + kmer_length + ext]) {
+              ext++;
+            }
+            // if current match is longer than previous longest match, update
+            if (kmer_length + ext - 1 > longest_len) {
+              longest_len = kmer_length + ext - 1;
+              longest_pos = pos;
+            }
           }
-          // if current match is longer than previous longest match, update
-          if (kmer_length + ext - 1 > longest_len) {
-            longest_len = kmer_length + ext - 1;
-            longest_pos = pos;
-          }
+        }
+
+        if (longest_len == -1) {
+          ss << t_seg[j];
+          continue;
         }
         
         // write to file
@@ -406,10 +417,14 @@ void SCCGC::matchLocal(const string target, const string reference,
         }
         int start = i*segment_length + longest_pos;
         int end = start + longest_len;
-        ss <<  start << "," << end << endl;
+        ss << start << "," << end << endl;
+        // write the unmatched character at the end
+        if (longest_pos+longest_len + 1 < segment_length) {
+          ss << t_seg[longest_pos+longest_len+1];
+        }
 
-        // update index to skip over longest match
-        j += longest_len - 1;
+        // update index to skip over longest match and unmatched character
+        j += longest_len + 1;
       } else {
         // write unmatched character to file
         ss << t_seg[j];
@@ -431,7 +446,9 @@ void SCCGC::matchLocal(const string target, const string reference,
     }
 
     // write newline to file after segment
+    // interimStream.write(ss.str().c_str(), ss.str().length());
     interimStream << ss.str();
+    interimStream.flush();
   }
 
   // last segment
@@ -484,7 +501,6 @@ void SCCGC::run7zip(const string filename) {
 
 void SCCGC::postprocess() {
   std::vector<int> posList;
-
 }
 
 bool SCCGC::allN(const string input) {
